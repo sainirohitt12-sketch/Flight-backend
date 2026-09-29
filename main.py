@@ -9,7 +9,7 @@ app = FastAPI()
 # Enable CORS so your static Hostinger frontend can talk to this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your actual domain (e.g., https://traalaa.com)
+    allow_origins=["https://travalaa.com/"],  # In production, replace with your actual domain (e.g., https://traalaa.com)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,44 +24,31 @@ class BookingRequest(BaseModel):
     currency: str = "USD"
     pay_currency: str = "USDT" # crypto user wants to pay with
 
+TRAVELPAYOUTS_API_TOKEN = os.getenv("Travelpayouts_API_token", "")
+
 @app.get("/api/search-flights")
 async def search_flights(origin: str, destination: str, depart_date: str):
-    # Using Travelpayouts V3 /v3/prices/cheap or flight-search endpoint
-    url = "https://api.travelpayouts.com/v2/prices/month-matrix"
+    url = "https://api.travelpayouts.com/v1/prices/cheap"
     params = {
-        "currency": "USD",
         "origin": origin.upper(),
         "destination": destination.upper(),
-        "show_to_affiliates": "true"
+        "currency": "USD",
+        "token": TRAVELPAYOUTS_API_TOKEN  # Passed as query parameter
     }
     headers = {
-        "x-access-token": TRAVELPAYOUTS_API_TOKEN
+        "x-access-token": TRAVELPAYOUTS_API_TOKEN  # Passed as header
     }
     
     async with httpx.AsyncClient() as client:
         response = await client.get(url, params=params, headers=headers)
         
-    # Fallback to alternative endpoint if v2 returns error
-    if response.status_code != 200:
-        alt_url = "https://travelpayouts-prime.p.rapidapi.com/v1/prices/cheap" # or standard v1 cheap
-        # Let's fallback to standard Travelpayouts v1 endpoint with token in header
-        url_v1 = "https://api.travelpayouts.com/v1/prices/cheap"
-        params_v1 = {
-            "origin": origin.upper(),
-            "destination": destination.upper(),
-            "currency": "USD"
-        }
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url_v1, params=params_v1, headers=headers)
-            
     if response.status_code != 200:
         raise HTTPException(
             status_code=response.status_code, 
-            detail=f"Travelpayouts API rejected token or request. Response: {response.text}"
+            detail=f"Travelpayouts API returned status {response.status_code}: {response.text}"
         )
         
     return response.json()
-
 @app.post("/api/create-crypto-invoice")
 async def create_crypto_invoice(data: BookingRequest):
     # Integrate with NOWPayments API to generate a crypto payment invoice

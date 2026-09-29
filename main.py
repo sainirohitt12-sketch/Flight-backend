@@ -69,3 +69,8 @@ async def create_crypto_invoice(data: BookingRequest):
         raise HTTPException(status_code=response.status_code, detail="Error generating crypto invoice")
         
     return response.json()
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

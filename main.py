@@ -26,11 +26,13 @@ class BookingRequest(BaseModel):
 
 @app.get("/api/search-flights")
 async def search_flights(origin: str, destination: str, depart_date: str):
-    url = "https://api.travelpayouts.com/v1/prices/cheap"
+    # Using Travelpayouts V3 /v3/prices/cheap or flight-search endpoint
+    url = "https://api.travelpayouts.com/v2/prices/month-matrix"
     params = {
+        "currency": "USD",
         "origin": origin.upper(),
         "destination": destination.upper(),
-        "depart_date": depart_date
+        "show_to_affiliates": "true"
     }
     headers = {
         "x-access-token": TRAVELPAYOUTS_API_TOKEN
@@ -39,8 +41,24 @@ async def search_flights(origin: str, destination: str, depart_date: str):
     async with httpx.AsyncClient() as client:
         response = await client.get(url, params=params, headers=headers)
         
+    # Fallback to alternative endpoint if v2 returns error
     if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Error fetching flights from Travelpayouts")
+        alt_url = "https://travelpayouts-prime.p.rapidapi.com/v1/prices/cheap" # or standard v1 cheap
+        # Let's fallback to standard Travelpayouts v1 endpoint with token in header
+        url_v1 = "https://api.travelpayouts.com/v1/prices/cheap"
+        params_v1 = {
+            "origin": origin.upper(),
+            "destination": destination.upper(),
+            "currency": "USD"
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url_v1, params=params_v1, headers=headers)
+            
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=response.status_code, 
+            detail=f"Travelpayouts API rejected token or request. Response: {response.text}"
+        )
         
     return response.json()
 

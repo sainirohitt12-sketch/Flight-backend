@@ -6,25 +6,24 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-# Enable CORS so your static Hostinger frontend can talk to this backend
+# Enable CORS properly for your frontend domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://travalaa.com/"],  # In production, replace with your actual domain (e.g., https://traalaa.com)
+    allow_origins=["*"],  # Allows requests from your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-TRAVELPAYOUTS_API_TOKEN = os.getenv("533eea91abf952fbe89c0b3768fa2112", "")
-NOWPAYMENTS_API_KEY = os.getenv("6GKAJAJ-B9E4WC0-NMJPMVA-K7FJJCH", "")
+# Correctly load environment variables from Railway
+TRAVELPAYOUTS_API_TOKEN = os.getenv("Travelpayouts_API_token", "")
+NOWPAYMENTS_API_KEY = os.getenv("NOWpayments_API_KEY", "")
 
 class BookingRequest(BaseModel):
     flight_number: str
     price: float
     currency: str = "USD"
     pay_currency: str = "USDT" # crypto user wants to pay with
-
-TRAVELPAYOUTS_API_TOKEN = os.getenv("Travelpayouts_API_token", "")
 
 @app.get("/api/search-flights")
 async def search_flights(origin: str, destination: str, depart_date: str):
@@ -49,9 +48,9 @@ async def search_flights(origin: str, destination: str, depart_date: str):
         )
         
     return response.json()
+
 @app.post("/api/create-crypto-invoice")
 async def create_crypto_invoice(data: BookingRequest):
-    # Integrate with NOWPayments API to generate a crypto payment invoice
     url = "https://api.nowpayments.io/v1/invoice"
     headers = {
         "x-api-key": NOWPAYMENTS_API_KEY,
@@ -63,8 +62,8 @@ async def create_crypto_invoice(data: BookingRequest):
         "pay_currency": data.pay_currency.lower(),
         "order_id": f"FLIGHT-{data.flight_number}",
         "order_description": f"Flight Ticket #{data.flight_number}",
-        "success_url": "https://traalaa.com/booking-success",
-        "cancel_url": "https://traalaa.com/booking-cancelled"
+        "success_url": "https://travalaa.com/booking-success",
+        "cancel_url": "https://travalaa.com/booking-cancelled"
     }
     
     async with httpx.AsyncClient() as client:

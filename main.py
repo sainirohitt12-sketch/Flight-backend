@@ -15,8 +15,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TRAVELPAYOUTS_API_TOKEN = os.getenv("533eea91abf952fbe89c0b3768fa2112", "533eea91abf952fbe89c0b3768fa2112")
-NOWPAYMENTS_API_KEY = os.getenv("6GKAJAJ-B9E4WC0-NMJPMVA-K7FJJCH", "6GKAJAJ-B9E4WC0-NMJPMVA-K7FJJCH")
+TRAVELPAYOUTS_API_TOKEN = os.getenv("533eea91abf952fbe89c0b3768fa2112", "")
+NOWPAYMENTS_API_KEY = os.getenv("6GKAJAJ-B9E4WC0-NMJPMVA-K7FJJCH", "")
 
 class BookingRequest(BaseModel):
     flight_number: str

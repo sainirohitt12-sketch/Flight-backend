@@ -27,15 +27,18 @@ class BookingRequest(BaseModel):
 
 @app.get("/api/search-flights")
 async def search_flights(origin: str, destination: str, depart_date: str):
-    url = "https://api.travelpayouts.com/v1/prices/cheap"
+    # Using v2 latest prices or matrix endpoint to fetch multiple results
+    url = "https://api.travelpayouts.com/v2/prices/latest"
     params = {
         "origin": origin.upper(),
         "destination": destination.upper(),
         "currency": "USD",
-        "token": TRAVELPAYOUTS_API_TOKEN  # Passed as query parameter
+        "period_type": "year",
+        "show_to_affiliates": "true",
+        "token": TRAVELPAYOUTS_API_TOKEN
     }
     headers = {
-        "x-access-token": TRAVELPAYOUTS_API_TOKEN  # Passed as header
+        "x-access-token": TRAVELPAYOUTS_API_TOKEN
     }
     
     async with httpx.AsyncClient() as client:
@@ -48,7 +51,6 @@ async def search_flights(origin: str, destination: str, depart_date: str):
         )
         
     return response.json()
-
 @app.post("/api/create-crypto-invoice")
 async def create_crypto_invoice(data: BookingRequest):
     url = "https://api.nowpayments.io/v1/invoice"

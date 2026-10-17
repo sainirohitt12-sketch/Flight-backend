@@ -18,86 +18,25 @@ import razorpay
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import requests
 from starlette.concurrency import run_in_threadpool
-
-import payment_store
-import db
 
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("travel_api")
 
-BOOKING_DEMAND_API_KEY = os.getenv("BOOKING_DEMAND_API_KEY", "").strip()
-BOOKING_AFFILIATE_ID = os.getenv("BOOKING_AFFILIATE_ID", "").strip()
-BOOKING_DEMAND_SANDBOX = os.getenv("BOOKING_DEMAND_SANDBOX", "true").lower() == "true"
-BOOKING_API_BASE = (
-    "https://demandapi-sandbox.booking.com/3.1"
-    if BOOKING_DEMAND_SANDBOX
-    else "https://demandapi.booking.com/3.1"
-)
-
-TRAVELPAYOUTS_API_TOKEN = os.getenv("TRAVELPAYOUTS_API_TOKEN", "").strip()
-TRIPADVISOR_RAPIDAPI_KEY = os.getenv("TRIPADVISOR_RAPIDAPI_KEY", "").strip()
-TRIPADVISOR_RAPIDAPI_HOST = "tripadvisor-com1.p.rapidapi.com"
-
-API_TIMEOUT_SECONDS = float(os.getenv("API_TIMEOUT_SECONDS", "12"))
-MAX_GUESTS = 30
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
-NOWPAYMENTS_API_KEY = os.getenv("NOWPAYMENTS_API_KEY", "6GKAJAJ-B9E4WC0-NMJPMVA-K7FJJCH").strip()
-NOWPAYMENTS_API_BASE_URL = os.getenv("NOWPAYMENTS_API_BASE_URL", "https://api.nowpayments.io/v1").strip().rstrip("/")
-NOWPAYMENTS_IPN_SECRET = os.getenv("NOWPAYMENTS_IPN_SECRET", "").strip()
-NOWPAYMENTS_SANDBOX = os.getenv("NOWPAYMENTS_SANDBOX", "false").lower() in ("true", "1")
-GOOGLE_SHEET_WEBHOOK_URL = os.getenv("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
-
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
-RAZORPAY_MODE = os.getenv("RAZORPAY_MODE", "test").strip().lower()
-RAZORPAY_CURRENCY = os.getenv("RAZORPAY_CURRENCY", "INR").strip().upper()
-RAZORPAY_ORDER_LOCK = asyncio.Lock()
-MAX_RAZORPAY_WEBHOOK_BYTES = 262144
-
-payment_store.DB_PATH = os.getenv("RAZORPAY_DB_PATH") or payment_store.DB_PATH
-payment_store.initialize()
-
-
-def configured_cors_origins() -> list[str]:
-    origins = os.getenv(
-        "CORS_ORIGINS",
-        "http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000",
-    )
-    parsed = [origin.strip().rstrip("/") for origin in origins.split(",") if origin.strip()]
-    if not parsed or "*" in parsed:
-        raise RuntimeError("CORS_ORIGINS must contain explicit origins and cannot include '*'.")
-    return parsed
-
-
 app = FastAPI(title="Travel Search API", version="1.0.0")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=configured_cors_origins(),
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
-
-
-@app.get("/api/health")
-async def health():
-    return {
-        "status": "ok",
-        "stays_search_configured": bool(BOOKING_DEMAND_API_KEY and BOOKING_AFFILIATE_ID),
-        "flight_search_configured": bool(TRAVELPAYOUTS_API_TOKEN),
-        "stays_booking_enabled": False,
-        "crypto_checkout_enabled": False,
-        "reservation_confirmation_enabled": False,
-    }
-
 
 AIRPORT_DATA = {
     "DEL": {"name": "Indira Gandhi International (DEL)", "city": "Delhi", "country": "India", "lat": 28.5562, "lon": 77.1000, "terminal": "Terminal 3"},

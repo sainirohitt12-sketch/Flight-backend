@@ -176,32 +176,55 @@ async def flights_search_full(
     results = []
     rapidapi_key = os.getenv("RAPIDAPI_KEY", "").strip()
 
-    # 1. Attempt live fetch via RapidAPI flight aggregator
     if rapidapi_key:
-        url = "https://sky-scrapper.p.rapidapi.com/api/v1/flights/searchFlights"
         headers = {
             "x-rapidapi-key": rapidapi_key,
             "x-rapidapi-host": "sky-scrapper.p.rapidapi.com"
         }
-        params = {
-            "originSkyId": o_code,
-            "destinationSkyId": d_code,
-            "date": depart_date.isoformat(),
-            "adults": passengers,
-            "cabinClass": cabin_class.lower()
-        }
         try:
             async with httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS) as client:
-                response = await client.get(url, params=params, headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
+                # Step 1: Resolve Origin & Destination Sky IDs via searchAirport
+                async def get_sky_details(query_code):
+                    res = await client.get(
+                        "https://sky-scrapper.p.rapidapi.com/api/v1/flights/searchAirport",
+                        params={"query": query_code},
+                        headers=headers
+                    )
+                    if res.status_code == 200:
+                        items = res.json().get("data", [])
+                        if items:
+                            return items[0].get("skyId", query_code), items[0].get("entityId", "")
+                    return query_code, ""
+
+                orig_sky_id, orig_entity_id = await get_sky_details(o_code)
+                dest_sky_id, dest_entity_id = await get_sky_details(d_code)
+
+                # Step 2: Fetch live flight itineraries using resolved IDs
+                flight_params = {
+                    "originSkyId": orig_sky_id,
+                    "destinationSkyId": dest_sky_id,
+                    "originEntityId": orig_entity_id,
+                    "destinationEntityId": dest_entity_id,
+                    "date": depart_date.isoformat(),
+                    "adults": passengers,
+                    "cabinClass": cabin_class.lower()
+                }
+
+                flight_resp = await client.get(
+                    "https://sky-scrapper.p.rapidapi.com/api/v1/flights/searchFlights",
+                    params=flight_params,
+                    headers=headers
+                )
+
+                if flight_resp.status_code == 200:
+                    data = flight_resp.json()
                     itineraries = data.get("data", {}).get("itineraries", [])
-                    
+
                     for idx, itin in enumerate(itineraries[:15]):
                         price_info = itin.get("price", {})
                         base_val = float(price_info.get("raw") or price_info.get("formatted", "800").replace("$", "").replace(",", "") or 800.0)
-                        
-                        # Apply your automatic 20% discount
+
+                        # Apply your fixed 20% discount
                         discounted_price = round(base_val * 0.80, 2)
                         giveback_val = round(discounted_price * 0.03, 2)
 
@@ -245,9 +268,9 @@ async def flights_search_full(
                             "baggage": "Checked bag included",
                         })
         except Exception as exc:
-            logger.warning(f"RapidAPI live fetch failed, using smart generator: {exc}")
+            logger.warning(f"RapidAPI two-step live fetch failed, using smart generator: {exc}")
 
-    # 2. Fallback to smart generator with 20% discount if RapidAPI key is missing or call fails
+    # Fallback to smart generator with 20% discount if live API is unavailable
     if not results:
         generated = getFallbackFlights(o_code, d_code, depart_date, passengers, cabin_class)
         for f in generated:

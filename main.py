@@ -174,17 +174,92 @@ async def flights_search_full(
         return_date = depart_date + timedelta(days=1)
 
     results = []
-    generated = getFallbackFlights(o_code, d_code, depart_date, passengers, cabin_class)
-    for f in generated:
-        orig_usd = f["price_usd"]
-        disc_usd = round(orig_usd * 0.80, 2)
-        f["price_usd"] = disc_usd
-        f["total_price"] = disc_usd
-        f["price"] = round(disc_usd / passengers, 2)
-        f["price_formatted"] = f"US$ {disc_usd:,.2f}"
-        f["giveback_formatted"] = f"US$ {round(disc_usd * 0.03, 2):.2f}"
-        f["price_ava"] = round(disc_usd / 0.55, 1)
-        results.append(f)
+    rapidapi_key = os.getenv("RAPIDAPI_KEY", "").strip()
+
+    # 1. Attempt live fetch via RapidAPI flight aggregator
+    if rapidapi_key:
+        url = "https://sky-scrapper.p.rapidapi.com/api/v1/flights/searchFlights"
+        headers = {
+            "x-rapidapi-key": rapidapi_key,
+            "x-rapidapi-host": "sky-scrapper.p.rapidapi.com"
+        }
+        params = {
+            "originSkyId": o_code,
+            "destinationSkyId": d_code,
+            "date": depart_date.isoformat(),
+            "adults": passengers,
+            "cabinClass": cabin_class.lower()
+        }
+        try:
+            async with httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS) as client:
+                response = await client.get(url, params=params, headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    itineraries = data.get("data", {}).get("itineraries", [])
+                    
+                    for idx, itin in enumerate(itineraries[:15]):
+                        price_info = itin.get("price", {})
+                        base_val = float(price_info.get("raw") or price_info.get("formatted", "800").replace("$", "").replace(",", "") or 800.0)
+                        
+                        # Apply your automatic 20% discount
+                        discounted_price = round(base_val * 0.80, 2)
+                        giveback_val = round(discounted_price * 0.03, 2)
+
+                        legs = itin.get("legs", [{}])
+                        first_leg = legs[0] if legs else {}
+                        carrier = first_leg.get("carriers", {}).get("marketing", [{}])[0]
+                        air_name = carrier.get("name", "Major Airline")
+                        air_code = carrier.get("alternateId", "AI")
+                        air_logo = carrier.get("logoUrl", "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=64&q=80")
+
+                        results.append({
+                            "id": f"FL-RAPID-{o_code}-{d_code}-{idx+1}",
+                            "code": air_code,
+                            "airline": air_name,
+                            "airline_logo": air_logo,
+                            "flight_number": f"{air_code}-{700 + idx}",
+                            "aircraft": "Boeing 777-300ER",
+                            "origin": o_code,
+                            "origin_code": o_code,
+                            "origin_name": orig_name,
+                            "destination": d_code,
+                            "destination_code": d_code,
+                            "destination_name": dest_name,
+                            "depart_date": depart_date.isoformat(),
+                            "return_date": return_date.isoformat(),
+                            "departure_time": first_leg.get("departure", "10:00")[:5],
+                            "arrival_time": first_leg.get("arrival", "22:00")[:5],
+                            "duration_formatted": f"{int(first_leg.get('durationInMinutes', 900)//60)}h {int(first_leg.get('durationInMinutes', 900)%60)}m",
+                            "duration_minutes": first_leg.get("durationInMinutes", 900),
+                            "stops_count": first_leg.get("stopCount", 0),
+                            "stops": first_leg.get("stopCount", 0),
+                            "stops_text": "Nonstop" if first_leg.get("stopCount", 0) == 0 else f"{first_leg.get('stopCount', 1)} stop",
+                            "price": round(discounted_price / passengers, 2),
+                            "price_usd": discounted_price,
+                            "total_price": discounted_price,
+                            "price_formatted": f"US$ {discounted_price:,.2f}",
+                            "giveback_formatted": f"US$ {giveback_val:.2f}",
+                            "price_ava": round(discounted_price / 0.55, 1),
+                            "passengers": passengers,
+                            "cabin_class": cabin_class,
+                            "baggage": "Checked bag included",
+                        })
+        except Exception as exc:
+            logger.warning(f"RapidAPI live fetch failed, using smart generator: {exc}")
+
+    # 2. Fallback to smart generator with 20% discount if RapidAPI key is missing or call fails
+    if not results:
+        generated = getFallbackFlights(o_code, d_code, depart_date, passengers, cabin_class)
+        for f in generated:
+            orig_usd = f["price_usd"]
+            disc_usd = round(orig_usd * 0.80, 2)
+            f["price_usd"] = disc_usd
+            f["total_price"] = disc_usd
+            f["price"] = round(disc_usd / passengers, 2)
+            f["price_formatted"] = f"US$ {disc_usd:,.2f}"
+            f["giveback_formatted"] = f"US$ {round(disc_usd * 0.03, 2):.2f}"
+            f["price_ava"] = round(disc_usd / 0.55, 1)
+            results.append(f)
 
     return {
         "status": "ok",
@@ -199,13 +274,3 @@ async def flights_search_full(
         "total_flights": len(results),
         "flights": results,
     }
-
-
-@app.get("/")
-@app.get("/index.html")
-def serve_index():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
-
-@app.get("/search.html")
-def serve_search():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "search.html"))

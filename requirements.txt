@@ -1,4 +1,7 @@
 fastapi
 uvicorn
 httpx
+razorpay
+python-dotenv
 pydantic
+starlette

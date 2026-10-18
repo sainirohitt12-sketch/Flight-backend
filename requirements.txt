@@ -5,3 +5,5 @@ razorpay
 python-dotenv
 pydantic
 starlette
+gspread
+oauth2client
